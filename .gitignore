@@ -1,3 +1,7 @@
+# baoxianzeren_hander_ignore
+sentence_splitting/*
+sentence_splitting_yiliao/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
