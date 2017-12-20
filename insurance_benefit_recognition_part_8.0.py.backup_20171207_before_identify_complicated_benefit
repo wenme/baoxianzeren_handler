@@ -1,0 +1,808 @@
+# -*- coding: utf-8 -*-
+
+from sys import argv
+import re
+import random
+
+print '本程序用于根据上一步骤输出的文件aggregation_label_table_tmp.txt或aggregation_label_table.txt生成给付情形'
+print '输入参数一：aggregation_label_table_tmp.txt'
+print '输出：benefit_payments.txt'
+
+def analyze_benefit_payments_regular(benefit_line_arr):
+    print (u'文档：%s\t保险金：%s' % (benefit_line_arr[0].split('|')[0], benefit_line_arr[0].split('|')[1])).encode('utf-8')
+    print '=' * 20
+    consequence_dict = {
+        '0': u'其他',
+        '1': u'医疗费用',
+        '2': u'重大疾病',
+        '3': u'理财储蓄',
+        '4': u'人寿意外'
+    }
+    dengdaiqi_dict = {
+        '0': u'无',
+        '1': u'等待期内',
+        '2': u'等待期外',
+        '3': u'等待期内及等待期外'
+    }
+    yuanyin_dict = {
+        '0': u'无',
+        '1': u'意外',
+        '2': u'非意外',
+        '3': u'意外及非意外'
+    }
+    beibaorennianling_dict = {
+        '0': u'无',
+        '1': u'之前',
+        '2': u'之后',
+        '3': u'之间',
+        '4': u'至'
+    }
+    baodanniandu_dict = {
+        '0': u'无',
+        '1': u'之前',
+        '2': u'之后',
+        '3': u'之间',
+        '4': u'至'
+    }
+    jifujine_dict = {
+        '-1': u'无匹配金额',
+        '0': u'无',
+        '1': u'保额',
+        '2': u'保险费',
+        '3': u'账户价值',
+        '4': u'现金价值',
+        '5': u'豁免',
+        '6': u'其他',
+    }
+    def jifujine_translator(jifujine_str):
+        ret = []
+        for i in jifujine_str.split('+'):
+            ret.append(jifujine_dict[i])
+        if len(ret) > 1:
+            return '(' + '+'.join(ret) + ')'
+        elif len(ret) == 1:
+            return ret[0]
+        else:
+            return u'无金额'
+
+    consequence_str = ''
+    dengdaiqi_str = ''
+    yuanyin_str = ''
+    beibaorennianling_str = ''
+    baodanniandu_str = ''
+    jifujine_str = ''
+    jifujine_relation = 0
+    end_of_benefit_payment = False
+    payment_json = {
+        'consequence': u'无限制',
+        'dengdaiqi': u'无限制',
+        'yuanyin': u'无限制',
+        'beibaorennianling': u'无限制',
+        'baodanniandu': u'无限制',
+        'jifujine': u'无限制',
+    }
+    for line in benefit_line_arr:
+        line_info = line.split('|')
+        pid = int(line_info[0])
+        sentence = line_info[1]
+        is_title = int(line_info[2])
+        consequence = int(line_info[3])
+        dengdaiqi = int(line_info[4])
+        dengdaiqi_value = line_info[5].strip()
+        yuanyin = int(line_info[6])
+        yuanyin_value = line_info[7].strip()
+        beibaorennianling = int(line_info[8])
+        beibaorennianling_value = line_info[9].strip()
+        baodanniandu = int(line_info[10])
+        baodanniandu_value = line_info[11].strip()
+        jifujine = line_info[12]
+        jifujine_value = line_info[13].strip()
+        relation = int(line_info[14])
+        # print line
+
+        if is_title == 1:
+            consequence_str = consequence_dict[str(consequence)]
+            payment_json['consequence'] = consequence_str
+
+        if end_of_benefit_payment == False:
+            if dengdaiqi != 0:
+                if len(dengdaiqi_value) > 0:
+                    dengdaiqi_str += ' %s(%s)' % (dengdaiqi_dict[str(dengdaiqi)], dengdaiqi_value)
+                else:
+                    dengdaiqi_str += ' %s' % (dengdaiqi_dict[str(dengdaiqi)])
+                payment_json['dengdaiqi'] = dengdaiqi_str
+            if yuanyin != 0:
+                yuanyin_str += ' ' + yuanyin_value
+                payment_json['yuanyin'] = yuanyin_str
+            if beibaorennianling != 0:
+                if beibaorennianling == 1:
+                    beibaorennianling_str += ' %s%s' % (beibaorennianling_value, beibaorennianling_dict[str(beibaorennianling)])
+                elif beibaorennianling == 2:
+                    beibaorennianling_str += ' %s%s' % (beibaorennianling_value, beibaorennianling_dict[str(beibaorennianling)])
+                elif beibaorennianling == 3:
+                    beibaorennianling_str += beibaorennianling_value.replace(',', beibaorennianling_dict[str(beibaorennianling)])
+                elif beibaorennianling == 4:
+                    beibaorennianling_str += ' %s%s' % (beibaorennianling_dict[str(beibaorennianling)], beibaorennianling_value)
+                else:
+                    beibaorennianling_str += beibaorennianling_value
+                payment_json['beibaorennianling'] = beibaorennianling_str
+            if baodanniandu != 0:
+                baodanniandu_str += ' ' + baodanniandu_value
+                payment_json['baodanniandu'] = baodanniandu_str
+            if relation != 0:
+                jifujine_relation = relation
+            if jifujine != '0':
+                if len(jifujine_value) > 0:
+                    jifujine_str += ' %sx%s' % (jifujine_translator(jifujine), jifujine_value)
+                else:
+                    jifujine_str += ' %s' % jifujine_translator(jifujine)
+                payment_json['jifujine'] = jifujine_str
+                end_of_benefit_payment = True
+        else:
+            if jifujine != '0':
+                if len(jifujine_value) > 0:
+                    jifujine_str += ' %sx%s' % (jifujine_translator(jifujine), jifujine_value)
+                else:
+                    jifujine_str += ' %s' % jifujine_translator(jifujine)
+                payment_json['jifujine'] = jifujine_str
+                end_of_benefit_payment = True
+            elif dengdaiqi != 0 or yuanyin != 0 or beibaorennianling != 0 or baodanniandu != 0:
+                # some exceptions to deal with
+                # print '--------------'
+                # print payment_json['dengdaiqi'], payment_json['yuanyin']
+                # print '--------------'
+                if payment_json['dengdaiqi'].find(u'等待期外') != -1 and payment_json['yuanyin'].find('+') != -1:
+                    # split situation 1
+                    print '+情形：'
+                    if jifujine_relation == 1:
+                        payment_json['jifujine'] = u'MAX( %s )' % payment_json['jifujine'].strip()
+                    elif jifujine_relation == 2:
+                        payment_json['jifujine'] = u'SUM( %s )' % payment_json['jifujine'].strip()
+                    else:
+                        pass
+                    for k in payment_json:
+                        if k == 'yuanyin':
+                            print k, ':', u'意外'.encode('utf-8')
+                        elif k == 'dengdaiqi':
+                            print k, ':', u'无限制'.encode('utf-8')
+                        else:
+                            print k, ':', payment_json[k].encode('utf-8')
+                    print '=' * 20
+
+                    # split situation 2
+                    print '+情形：'
+                    if jifujine_relation == 1:
+                        payment_json['jifujine'] = u'MAX( %s )' % payment_json['jifujine'].strip()
+                    elif jifujine_relation == 2:
+                        payment_json['jifujine'] = u'SUM( %s )' % payment_json['jifujine'].strip()
+                    else:
+                        pass
+                    for k in payment_json:
+                        if k == 'yuanyin':
+                            print k, ':', payment_json[k][payment_json['yuanyin'].find('+')+1:].encode('utf-8')
+                        else:
+                            print k, ':', payment_json[k].encode('utf-8')
+                    print '=' * 20
+                else:
+                    print '+情形：'
+                    if jifujine_relation == 1:
+                        payment_json['jifujine'] = u'MAX( %s )' % payment_json['jifujine'].strip()
+                    elif jifujine_relation == 2:
+                        payment_json['jifujine'] = u'SUM( %s )' % payment_json['jifujine'].strip()
+                    else:
+                        pass
+                    for k in payment_json:
+                        print k, ':', payment_json[k].encode('utf-8')
+                    print '=' * 20
+
+                end_of_benefit_payment = False
+                dengdaiqi_str = ''
+                yuanyin_str = ''
+                beibaorennianling_str = ''
+                baodanniandu_str = ''
+                jifujine_str = ''
+                jifujine_relation = 0
+                payment_json = { 
+                    'consequence': u'无限制',
+                    'dengdaiqi': u'无限制',
+                    'yuanyin': u'无限制',
+                    'beibaorennianling': u'无限制',
+                    'baodanniandu': u'无限制',
+                    'jifujine': u'无限制',
+                }
+                payment_json['consequence'] = consequence_str
+                if dengdaiqi != 0:
+                    if len(dengdaiqi_value) > 0:
+                        dengdaiqi_str += ' %s(%s)' % (dengdaiqi_dict[str(dengdaiqi)], dengdaiqi_value)
+                    else:
+                        dengdaiqi_str += ' %s' % (dengdaiqi_dict[str(dengdaiqi)])
+                    payment_json['dengdaiqi'] = dengdaiqi_str
+                if yuanyin != 0:
+                    yuanyin_str += ' ' + yuanyin_value
+                    payment_json['yuanyin'] = yuanyin_str
+                if beibaorennianling != 0:
+                    if beibaorennianling == 1:
+                        beibaorennianling_str += ' %s%s' % (beibaorennianling_value, beibaorennianling_dict[str(beibaorennianling)])
+                    elif beibaorennianling == 2:
+                        beibaorennianling_str += ' %s%s' % (beibaorennianling_value, beibaorennianling_dict[str(beibaorennianling)])
+                    elif beibaorennianling == 3:
+                        beibaorennianling_str += beibaorennianling_value.replace(',', beibaorennianling_dict[str(beibaorennianling)])
+                    elif beibaorennianling == 4:
+                        beibaorennianling_str += ' %s%s' % (beibaorennianling_dict[str(beibaorennianling)], beibaorennianling_value)
+                    else:
+                        beibaorennianling_str += beibaorennianling_value
+                    payment_json['beibaorennianling'] = beibaorennianling_str
+                if baodanniandu != 0:
+                    baodanniandu_str += ' ' + baodanniandu_value
+                    payment_json['baodanniandu'] = baodanniandu_str
+
+    if len(payment_json) > 0:
+        if payment_json['dengdaiqi'].find(u'等待期外') != -1 and payment_json['yuanyin'].find('+') != -1:
+            # split situation 1
+            print '+情形：'
+            if jifujine_relation == 1:
+                payment_json['jifujine'] = u'MAX( %s )' % payment_json['jifujine'].strip()
+            elif jifujine_relation == 2:
+                payment_json['jifujine'] = u'SUM( %s )' % payment_json['jifujine'].strip()
+            else:
+                pass
+            for k in payment_json:
+                if k == 'yuanyin':
+                    print k, ':', u'意外'.encode('utf-8')
+                elif k == 'dengdaiqi':
+                    print k, ':', u'无限制'.encode('utf-8')
+                else:
+                    print k, ':', payment_json[k].encode('utf-8')
+            print '=' * 20
+
+            # split situation 2
+            print '+情形：'
+            if jifujine_relation == 1:
+                payment_json['jifujine'] = u'MAX( %s )' % payment_json['jifujine'].strip()
+            elif jifujine_relation == 2:
+                payment_json['jifujine'] = u'SUM( %s )' % payment_json['jifujine'].strip()
+            else:
+                pass
+            for k in payment_json:
+                if k == 'yuanyin':
+                    print k, ':', payment_json[k][payment_json['yuanyin'].find('+')+1:].encode('utf-8')
+                else:
+                    print k, ':', payment_json[k].encode('utf-8')
+            print '=' * 20
+        else:
+            print '+情形：'
+            if jifujine_relation == 1:
+                payment_json['jifujine'] = u'MAX( %s )' % payment_json['jifujine'].strip()
+            elif jifujine_relation == 2:
+                payment_json['jifujine'] = u'SUM( %s )' % payment_json['jifujine'].strip()
+            else:
+                pass
+            for k in payment_json:
+                print k, ':', payment_json[k].encode('utf-8')
+            print '=' * 20
+
+    return '\n'+'*'*40+'\n'
+
+def analyze_benefit_payments_special(benefit_line_arr, dengdaiqi_line_arr):
+    print (u'文档：%s\t保险金：%s' % (benefit_line_arr[0].split('|')[0], benefit_line_arr[0].split('|')[1])).encode('utf-8')
+    print '=' * 20
+    consequence_dict = {
+        '0': u'其他',
+        '1': u'医疗费用',
+        '2': u'重大疾病',
+        '3': u'理财储蓄',
+        '4': u'人寿意外'
+    }
+    dengdaiqi_dict = {
+        '0': u'无',
+        '1': u'等待期内',
+        '2': u'等待期外',
+        '3': u'等待期内及等待期外'
+    }
+    yuanyin_dict = {
+        '0': u'无',
+        '1': u'意外',
+        '2': u'非意外',
+        '3': u'意外及非意外'
+    }
+    beibaorennianling_dict = {
+        '0': u'无',
+        '1': u'之前',
+        '2': u'之后',
+        '3': u'之间',
+        '4': u'至'
+    }
+    baodanniandu_dict = {
+        '0': u'无',
+        '1': u'之前',
+        '2': u'之后',
+        '3': u'之间',
+        '4': u'至'
+    }
+    jifujine_dict = {
+        '-1': u'无匹配金额',
+        '0': u'无',
+        '1': u'保额',
+        '2': u'保险费',
+        '3': u'账户价值',
+        '4': u'现金价值',
+        '5': u'豁免',
+        '6': u'其他',
+    }
+    def jifujine_translator(jifujine_str):
+        ret = []
+        for i in jifujine_str.split('+'):
+            ret.append(jifujine_dict[i])
+        if len(ret) > 1:
+            return '(' + '+'.join(ret) + ')'
+        elif len(ret) == 1:
+            return ret[0]
+        else:
+            return u'无金额'
+
+    # dengdaiqi payments analyzer
+    extra_dengdaiqi_str1 = ''
+    extra_dengdaiqi_str2 = ''
+    extra_yuanyin_str = ''
+    extra_beibaorennianling_str = ''
+    extra_baodanniandu_str = ''
+    extra_jifujine_str = ''
+    extra_jifujine_relation = 0
+    end_of_benefit_payment = False
+    jifujine_count = 0
+    extra_payment_json = {
+        'consequence': u'无限制',
+        'dengdaiqi': u'无限制',
+        'yuanyin': u'无限制',
+        'beibaorennianling': u'无限制',
+        'baodanniandu': u'无限制',
+        'jifujine': u'无限制',
+    }
+    for line in dengdaiqi_line_arr:
+        line_info = line.split('|')
+        pid = int(line_info[0])
+        sentence = line_info[1]
+        is_title = int(line_info[2])
+        consequence = int(line_info[3])
+        dengdaiqi = int(line_info[4])
+        dengdaiqi_value = line_info[5].strip()
+        yuanyin = int(line_info[6])
+        yuanyin_value = line_info[7].strip()
+        beibaorennianling = int(line_info[8])
+        beibaorennianling_value = line_info[9].strip()
+        baodanniandu = int(line_info[10])
+        baodanniandu_value = line_info[11].strip()
+        jifujine = line_info[12]
+        jifujine_value = line_info[13].strip()
+        relation = int(line_info[14])
+
+        if end_of_benefit_payment == False:
+            if dengdaiqi != 0:
+                if len(dengdaiqi_value) > 0:
+                    extra_dengdaiqi_str1 += ' %s(%s)' % (dengdaiqi_dict[str(dengdaiqi)], dengdaiqi_value)
+                    extra_dengdaiqi_str2 += ' %s(%s)'% (u'等待期外', dengdaiqi_value)
+                else:
+                    extra_dengdaiqi_str1 += ' %s' % (dengdaiqi_dict[str(dengdaiqi)])
+                    extra_dengdaiqi_str2 += ' %s'% (u'等待期外')
+                extra_payment_json['dengdaiqi'] = extra_dengdaiqi_str1
+            if yuanyin != 0:
+                extra_yuanyin_str += ' ' + yuanyin_value
+                extra_payment_json['yuanyin'] = extra_yuanyin_str
+            if beibaorennianling != 0:
+                if beibaorennianling == 1:
+                    extra_beibaorennianling_str += ' %s%s' % (beibaorennianling_value, beibaorennianling_dict[str(beibaorennianling)])
+                elif beibaorennianling == 2:
+                    extra_beibaorennianling_str += ' %s%s' % (beibaorennianling_value, beibaorennianling_dict[str(beibaorennianling)])
+                elif beibaorennianling == 3:
+                    extra_beibaorennianling_str += beibaorennianling_value.replace(',', beibaorennianling_dict[str(beibaorennianling)])
+                elif beibaorennianling == 4:
+                    extra_beibaorennianling_str += ' %s%s' % (beibaorennianling_dict[str(beibaorennianling)], beibaorennianling_value)
+                else:
+                    extra_beibaorennianling_str += beibaorennianling_value
+                extra_payment_json['beibaorennianling'] = extra_beibaorennianling_str
+            if baodanniandu != 0:
+                extra_baodanniandu_str += ' ' + baodanniandu_value
+                extra_payment_json['baodanniandu'] = extra_baodanniandu_str
+            if relation != 0:
+                extra_jifujine_relation = relation
+            if jifujine != '0':
+                if len(jifujine_value) > 0:
+                    extra_jifujine_str += ' %sx%s' % (jifujine_translator(jifujine), jifujine_value)
+                else:
+                    extra_jifujine_str += ' %s' % jifujine_translator(jifujine)
+                extra_payment_json['jifujine'] = extra_jifujine_str
+                if extra_jifujine_relation != 0:
+                    jifujine_count += 1
+                else:
+                    end_of_benefit_payment = True
+
+                if jifujine_count >= 2:
+                    end_of_benefit_payment = True
+        else:
+            break
+    # end of dengdaiqi analyzing
+
+    consequence_str = ''
+    dengdaiqi_str = ''
+    yuanyin_str = ''
+    beibaorennianling_str = ''
+    baodanniandu_str = ''
+    jifujine_str = ''
+    jifujine_relation = 0
+    end_of_benefit_payment = False
+    payment_json = {
+        'consequence': u'无限制',
+        'dengdaiqi': extra_dengdaiqi_str2,
+        'yuanyin': u'无限制',
+        'beibaorennianling': u'无限制',
+        'baodanniandu': u'无限制',
+        'jifujine': u'无限制',
+    }
+    for line in benefit_line_arr:
+        line_info = line.split('|')
+        pid = int(line_info[0])
+        sentence = line_info[1]
+        is_title = int(line_info[2])
+        consequence = int(line_info[3])
+        dengdaiqi = int(line_info[4])
+        dengdaiqi_value = line_info[5].strip()
+        yuanyin = int(line_info[6])
+        yuanyin_value = line_info[7].strip()
+        beibaorennianling = int(line_info[8])
+        beibaorennianling_value = line_info[9].strip()
+        baodanniandu = int(line_info[10])
+        baodanniandu_value = line_info[11].strip()
+        jifujine = line_info[12]
+        jifujine_value = line_info[13].strip()
+        relation = int(line_info[14])
+        # print line
+
+        if is_title == 1:
+            consequence_str = consequence_dict[str(consequence)]
+            payment_json['consequence'] = consequence_str
+            if len(dengdaiqi_line_arr) > 0:
+                extra_payment_json['consequence'] = consequence_str
+                print '+附加情形：'
+                if extra_jifujine_relation == 1:
+                    extra_payment_json['jifujine'] = u'MAX( %s )' % extra_payment_json['jifujine'].strip()
+                elif extra_jifujine_relation == 2:
+                    extra_payment_json['jifujine'] = u'SUM( %s )' % extra_payment_json['jifujine'].strip()
+                else:
+                    pass
+                for k in extra_payment_json:
+                    print k, ':', extra_payment_json[k].encode('utf-8')
+                print '=' * 20
+
+        if end_of_benefit_payment == False:
+            if dengdaiqi != 0:
+                if len(dengdaiqi_value) > 0:
+                    dengdaiqi_str += ' %s(%s)' % (dengdaiqi_dict[str(dengdaiqi)], dengdaiqi_value)
+                else:
+                    dengdaiqi_str += ' %s' % (dengdaiqi_dict[str(dengdaiqi)])
+                payment_json['dengdaiqi'] = dengdaiqi_str
+            if yuanyin != 0:
+                yuanyin_str += ' ' + yuanyin_value
+                payment_json['yuanyin'] = yuanyin_str
+            if beibaorennianling != 0:
+                if beibaorennianling == 1:
+                    beibaorennianling_str += ' %s%s' % (beibaorennianling_value, beibaorennianling_dict[str(beibaorennianling)])
+                elif beibaorennianling == 2:
+                    beibaorennianling_str += ' %s%s' % (beibaorennianling_value, beibaorennianling_dict[str(beibaorennianling)])
+                elif beibaorennianling == 3:
+                    beibaorennianling_str += beibaorennianling_value.replace(',', beibaorennianling_dict[str(beibaorennianling)])
+                elif beibaorennianling == 4:
+                    beibaorennianling_str += ' %s%s' % (beibaorennianling_dict[str(beibaorennianling)], beibaorennianling_value)
+                else:
+                    beibaorennianling_str += beibaorennianling_value
+                payment_json['beibaorennianling'] = beibaorennianling_str
+            if baodanniandu != 0:
+                baodanniandu_str += ' ' + baodanniandu_value
+                payment_json['baodanniandu'] = baodanniandu_str
+            if relation != 0:
+                jifujine_relation = relation
+            if jifujine != '0':
+                if len(jifujine_value) > 0:
+                    jifujine_str += ' %sx%s' % (jifujine_translator(jifujine), jifujine_value)
+                else:
+                    jifujine_str += ' %s' % jifujine_translator(jifujine)
+                payment_json['jifujine'] = jifujine_str
+                end_of_benefit_payment = True
+        else:
+            if jifujine != '0':
+                if len(jifujine_value) > 0:
+                    jifujine_str += ' %sx%s' % (jifujine_translator(jifujine), jifujine_value)
+                else:
+                    jifujine_str += ' %s' % jifujine_translator(jifujine)
+                payment_json['jifujine'] = jifujine_str
+                end_of_benefit_payment = True
+            elif dengdaiqi != 0 or yuanyin != 0 or beibaorennianling != 0 or baodanniandu != 0:
+                # some exceptions to deal with
+                # print '--------------'
+                # print payment_json['dengdaiqi'], payment_json['yuanyin']
+                # print '--------------'
+                if payment_json['dengdaiqi'].find(u'等待期外') != -1 and payment_json['yuanyin'].find('+') != -1:
+                    # split situation 1
+                    print '+情形：'
+                    if jifujine_relation == 1:
+                        payment_json['jifujine'] = u'MAX( %s )' % payment_json['jifujine'].strip()
+                    elif jifujine_relation == 2:
+                        payment_json['jifujine'] = u'SUM( %s )' % payment_json['jifujine'].strip()
+                    else:
+                        pass
+                    for k in payment_json:
+                        if k == 'yuanyin':
+                            print k, ':', u'意外'.encode('utf-8')
+                        elif k == 'dengdaiqi':
+                            print k, ':', u'无限制'.encode('utf-8')
+                        else:
+                            print k, ':', payment_json[k].encode('utf-8')
+                    print '=' * 20
+
+                    # split situation 2
+                    print '+情形：'
+                    if jifujine_relation == 1:
+                        payment_json['jifujine'] = u'MAX( %s )' % payment_json['jifujine'].strip()
+                    elif jifujine_relation == 2:
+                        payment_json['jifujine'] = u'SUM( %s )' % payment_json['jifujine'].strip()
+                    else:
+                        pass
+                    for k in payment_json:
+                        if k == 'yuanyin':
+                            print k, ':', payment_json[k][payment_json['yuanyin'].find('+')+1:].encode('utf-8')
+                        else:
+                            print k, ':', payment_json[k].encode('utf-8')
+                    print '=' * 20
+                else:
+                    print '+情形：'
+                    if jifujine_relation == 1:
+                        payment_json['jifujine'] = u'MAX( %s )' % payment_json['jifujine'].strip()
+                    elif jifujine_relation == 2:
+                        payment_json['jifujine'] = u'SUM( %s )' % payment_json['jifujine'].strip()
+                    else:
+                        pass
+                    for k in payment_json:
+                        print k, ':', payment_json[k].encode('utf-8')
+                    print '=' * 20
+
+                end_of_benefit_payment = False
+                dengdaiqi_str = ''
+                yuanyin_str = ''
+                beibaorennianling_str = ''
+                baodanniandu_str = ''
+                jifujine_str = ''
+                jifujine_relation = 0
+                payment_json = {
+                    'consequence': u'无限制',
+                    'dengdaiqi': extra_dengdaiqi_str2,
+                    'yuanyin': u'无限制',
+                    'beibaorennianling': u'无限制',
+                    'baodanniandu': u'无限制',
+                    'jifujine': u'无限制',
+                }
+                payment_json['consequence'] = consequence_str
+                if dengdaiqi != 0:
+                    if len(dengdaiqi_value) > 0:
+                        dengdaiqi_str += ' %s(%s)' % (dengdaiqi_dict[str(dengdaiqi)], dengdaiqi_value)
+                    else:
+                        dengdaiqi_str += ' %s' % (dengdaiqi_dict[str(dengdaiqi)])
+                    payment_json['dengdaiqi'] = dengdaiqi_str
+                if yuanyin != 0:
+                    yuanyin_str += ' ' + yuanyin_value
+                    payment_json['yuanyin'] = yuanyin_str
+                if beibaorennianling != 0:
+                    if beibaorennianling == 1:
+                        beibaorennianling_str += ' %s%s' % (beibaorennianling_value, beibaorennianling_dict[str(beibaorennianling)])
+                    elif beibaorennianling == 2:
+                        beibaorennianling_str += ' %s%s' % (beibaorennianling_value, beibaorennianling_dict[str(beibaorennianling)])
+                    elif beibaorennianling == 3:
+                        beibaorennianling_str += beibaorennianling_value.replace(',', beibaorennianling_dict[str(beibaorennianling)])
+                    elif beibaorennianling == 4:
+                        beibaorennianling_str += ' %s%s' % (beibaorennianling_dict[str(beibaorennianling)], beibaorennianling_value)
+                    else:
+                        beibaorennianling_str += beibaorennianling_value
+                    payment_json['beibaorennianling'] = beibaorennianling_str
+                if baodanniandu != 0:
+                    baodanniandu_str += ' ' + baodanniandu_value
+                    payment_json['baodanniandu'] = baodanniandu_str
+
+    if len(payment_json) > 0:
+        if payment_json['dengdaiqi'].find(u'等待期外') != -1 and payment_json['yuanyin'].find('+') != -1:
+            # split situation 1
+            print '+情形：'
+            if jifujine_relation == 1:
+                payment_json['jifujine'] = u'MAX( %s )' % payment_json['jifujine'].strip()
+            elif jifujine_relation == 2:
+                payment_json['jifujine'] = u'SUM( %s )' % payment_json['jifujine'].strip()
+            else:
+                pass
+            for k in payment_json:
+                if k == 'yuanyin':
+                    print k, ':', u'意外'.encode('utf-8')
+                elif k == 'dengdaiqi':
+                    print k, ':', u'无限制'.encode('utf-8')
+                else:
+                    print k, ':', payment_json[k].encode('utf-8')
+            print '=' * 20
+
+            # split situation 2
+            print '+情形：'
+            if jifujine_relation == 1:
+                payment_json['jifujine'] = u'MAX( %s )' % payment_json['jifujine'].strip()
+            elif jifujine_relation == 2:
+                payment_json['jifujine'] = u'SUM( %s )' % payment_json['jifujine'].strip()
+            else:
+                pass
+            for k in payment_json:
+                if k == 'yuanyin':
+                    print k, ':', payment_json[k][payment_json['yuanyin'].find('+')+1:].encode('utf-8')
+                else:
+                    print k, ':', payment_json[k].encode('utf-8')
+            print '=' * 20
+        else:
+            print '+情形：'
+            if jifujine_relation == 1:
+                payment_json['jifujine'] = u'MAX( %s )' % payment_json['jifujine'].strip()
+            elif jifujine_relation == 2:
+                payment_json['jifujine'] = u'SUM( %s )' % payment_json['jifujine'].strip()
+            else:
+                pass
+            for k in payment_json:
+                print k, ':', payment_json[k].encode('utf-8')
+            print '=' * 20
+
+    return '\n'+'*'*40+'\n'
+
+def analyze_product(product_line_arr):
+    # analyzer_type:
+    # 1-regular analyzer
+    # 2-special analyzer with dengdaiqi ahead of some benefits
+    analyzer_type = 1
+    for line in product_line_arr:
+        line_info = line.split('|')
+        pid = int(line_info[0])
+        sentence = line_info[1]
+        is_title = int(line_info[2])
+
+        if sentence.find(u'等待期') != -1 and is_title == 2:
+            analyzer_type = 2
+            break
+
+    # regular analyzer
+    if analyzer_type == 1:
+        benefit_line_arr = []
+        flush_flag = False
+        collect_flag = False
+        for line in product_line_arr:
+            line_info = line.split('|')
+            pid = int(line_info[0])
+            sentence = line_info[1]
+            is_title = int(line_info[2])
+        
+            if is_title != 0 and len(benefit_line_arr) > 0:
+                flush_flag = True
+            else:
+                flush_flag = False
+        
+            if flush_flag == True:
+                ret = analyze_benefit_payments_regular(benefit_line_arr)
+                print ret
+                benefit_line_arr = []
+        
+            if is_title == 1:
+                collect_flag = True
+            elif is_title == 2:
+                collect_flag = False
+            elif last_pid != pid:
+                collect_flag = False
+            else:
+                pass
+        
+            if collect_flag == True:
+                benefit_line_arr.append(line)
+        
+        if len(benefit_line_arr) > 0:
+            ret = analyze_benefit_payments_regular(benefit_line_arr)
+            print ret
+    elif analyzer_type == 2:
+        print 'Warning: found DENGDAIQI outside of benefit lines in document %s!' % pid
+        benefit_line_arr = []
+        dengdaiqi_line_arr = []
+        flush_flag = False
+        collect_benefit_flag = False
+        collect_dengdaiqi_flag = False
+        for line in product_line_arr:
+            line_info = line.split('|')
+            pid = int(line_info[0])
+            sentence = line_info[1]
+            is_title = int(line_info[2])
+
+            if is_title != 0 and len(benefit_line_arr) > 0:
+                flush_flag = True
+            else:
+                flush_flag = False
+
+            if flush_flag == True:
+                ret = analyze_benefit_payments_special(benefit_line_arr, dengdaiqi_line_arr)
+                print ret
+                benefit_line_arr = []
+
+            if is_title == 1:
+                collect_benefit_flag = True
+                collect_dengdaiqi_flag = False
+            elif is_title == 2:
+                collect_benefit_flag = False
+                collect_dengdaiqi_flag = True
+            else:
+                pass
+
+            if collect_benefit_flag == True:
+                benefit_line_arr.append(line)
+
+            if collect_dengdaiqi_flag == True:
+                dengdaiqi_line_arr.append(line)
+
+        if len(benefit_line_arr) > 0:
+            ret = analyze_benefit_payments_special(benefit_line_arr, dengdaiqi_line_arr)
+            print ret
+
+    else:
+        print 'ha?\n'
+
+    return analyzer_type
+
+input_file_path = argv[1]
+input_file = open(input_file_path)
+product_line_arr = []
+last_pid = -1
+flush_flag = False
+line_count = 0
+target_pid = []
+for line in input_file.readlines():
+    line = line.strip().decode('utf-8')
+    line_count += 1
+    match = re.match(ur'pid\|', line)
+    if match:
+        continue
+
+    if len(line) == 0:
+        continue
+
+    line_info = line.split('|')
+    if len(line_info) < 15:
+        print 'format error:', line.encode('utf-8')
+        continue
+
+    pid = int(line_info[0])
+    sentence = line_info[1]
+    is_title = int(line_info[2])
+
+    if last_pid != pid and len(product_line_arr) > 0:
+        flush_flag = True
+    else:
+        flush_flag = False
+
+    if flush_flag == True:
+        ret = analyze_product(product_line_arr)
+        product_line_arr = []
+        if ret == 2:
+            target_pid.append(last_pid)
+
+    product_line_arr.append(line)
+
+    last_pid = pid
+
+if len(product_line_arr) > 0:
+    ret = analyze_product(product_line_arr)
+    if ret == 2:
+        target_pid.append(last_pid)
+
+print 'target pids:'
+print '【',
+for i in target_pid:
+    print i,
+print '】'
+print 'pick 10 out of %s:' % len(target_pid)
+print '【',
+for i in random.sample(target_pid, 10):
+    print i,
+print '】'
